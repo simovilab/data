@@ -1,0 +1,63 @@
+# MinIO AIStor (free license) — single-node S3 server exposed via an existing Traefik proxy.
+#
+# Traefik terminates TLS once on its :443 (websecure) entrypoint and routes by hostname:
+#   https://${MINIO_API_DOMAIN}      -> container :9000  (S3 API)
+#   https://${MINIO_CONSOLE_DOMAIN}  -> container :9001  (Console UI)
+#
+# MinIO speaks plain HTTP inside the Docker network; Traefik handles all HTTPS, so no
+# TLS certificates are mounted into the container.
+#
+# Configuration comes from .env (see .env.example). Defaults below match the intended
+# server setup so `docker compose config` still resolves if .env is missing.
+
+services:
+  minio:
+    image: ${MINIO_IMAGE:-quay.io/minio/aistor/minio:latest}
+    container_name: aistor-server
+    restart: unless-stopped
+    # The image entrypoint resolves to `minio`, so the command starts with `server`.
+    command: server /mnt/data --console-address ":9001" --license /minio.license
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      # Console's externally reachable URL — required when served behind a reverse proxy.
+      MINIO_BROWSER_REDIRECT_URL: https://${MINIO_CONSOLE_DOMAIN:-console.data.simovilab.org}
+    volumes:
+      - minio-data:/mnt/data
+      - ./minio.license:/minio.license:ro
+    networks:
+      - traefik-proxy
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    labels:
+      - traefik.enable=true
+      # Network Traefik uses to reach this container.
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik-proxy}
+
+      # --- S3 API -> container port 9000 ---
+      - traefik.http.routers.minio-api.rule=Host(`${MINIO_API_DOMAIN:-data.simovilab.org}`)
+      - traefik.http.routers.minio-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.minio-api.tls=true
+      - traefik.http.routers.minio-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      - traefik.http.routers.minio-api.service=minio-api
+      - traefik.http.services.minio-api.loadbalancer.server.port=9000
+
+      # --- Console UI -> container port 9001 ---
+      - traefik.http.routers.minio-console.rule=Host(`${MINIO_CONSOLE_DOMAIN:-console.data.simovilab.org}`)
+      - traefik.http.routers.minio-console.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.minio-console.tls=true
+      - traefik.http.routers.minio-console.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      - traefik.http.routers.minio-console.service=minio-console
+      - traefik.http.services.minio-console.loadbalancer.server.port=9001
+
+volumes:
+  minio-data:
+
+networks:
+  traefik-proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik-proxy}

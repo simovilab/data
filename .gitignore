@@ -1,0 +1,5 @@
+# Local environment + secrets — never commit these
+.env
+
+# MinIO AIStor license (keep out of version control)
+minio.license

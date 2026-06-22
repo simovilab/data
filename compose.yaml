@@ -26,7 +26,7 @@ services:
       - minio-data:/mnt/data
       - ./minio.license:/minio.license:ro
     networks:
-      - traefik-proxy
+      - traefik_proxy
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 30s
@@ -36,7 +36,7 @@ services:
     labels:
       - traefik.enable=true
       # Network Traefik uses to reach this container.
-      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik-proxy}
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik_proxy}
 
       # --- S3 API -> container port 9000 ---
       - traefik.http.routers.minio-api.rule=Host(`${MINIO_API_DOMAIN:-data.simovilab.org}`)
@@ -58,6 +58,6 @@ volumes:
   minio-data:
 
 networks:
-  traefik-proxy:
+  traefik_proxy:
     external: true
-    name: ${TRAEFIK_NETWORK:-traefik-proxy}
+    name: ${TRAEFIK_NETWORK:-traefik_proxy}
